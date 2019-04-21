@@ -1,0 +1,102 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+研究问题：
+1、语言和收入关系
+2、收入预测
+3、不同语言之间的关系，哪些语言会同时出现
+4、最想学R和PYTHON的人的特征
+
+
+#载入库
+```{r}
+library(tidyverse)
+library(tidytext)
+```
+
+#读数据
+```{r}
+path <- "D:/K/DATA EXERCISE/DATA/developer_survey_2018/"
+data_name <- "survey_results_public.csv"
+sf <- read_csv(paste0(path, data_name))
+sf
+glimpse(sf)
+```
+
+#语言流行程度
+```{r, fig.height=12, fig.width=15}
+#现在在用
+sf %>% 
+  filter(!is.na(LanguageWorkedWith)) %>% 
+  select(Respondent, LanguageWorkedWith) %>% 
+  unnest_tokens(input = LanguageWorkedWith, output = tool, token = "regex", pattern = ";") -> tool_now #按特定标点符号分行
+tool_now
+
+tool_now %>% 
+  count(tool) %>% 
+  arrange(-n) %>% 
+  ggplot(aes(reorder(tool, n), n)) +
+  geom_col(fill = "darkblue") + 
+  geom_text(aes(label = n), size = 4, hjust = -0.1) +
+  coord_flip() +
+  labs(x = NULL, y = NULL) +
+  theme(axis.text.y = element_text(size = 13),
+        axis.text.x = element_text(size = 13)) 
+
+#明年想学
+sf %>% 
+  filter(!is.na(LanguageDesireNextYear)) %>% 
+  select(Respondent, LanguageDesireNextYear) %>% 
+  unnest_tokens(input = LanguageDesireNextYear, output = tool, token = "regex", pattern = ";") -> tool_next #按特定标点符号分行
+tool_next
+
+tool_next %>% 
+  count(tool) %>% 
+  arrange(-n) %>% 
+  ggplot(aes(reorder(tool, n), n)) +
+  geom_col(fill = "darkblue") + 
+  geom_text(aes(label = n), size = 4, hjust = -0.1) +
+  coord_flip() +
+  labs(x = NULL, y = NULL) +
+  theme(axis.text.y = element_text(size = 13),
+        axis.text.x = element_text(size = 13)) 
+```
+
+#想学R和PYTHON语言的人群
+```{r}
+#id抽取
+tool_now %>% 
+  filter(tool == "r") %>% 
+  distinct(Respondent) %>% 
+  select(Respondent) -> r_id_now
+tool_next %>% 
+  filter(tool == "r") %>% 
+  distinct(Respondent) %>% 
+  select(Respondent) -> r_id_next
+tool_now %>% 
+  filter(tool == "python") %>% 
+  distinct(Respondent) %>% 
+  select(Respondent) -> python_id_now
+tool_next %>% 
+  filter(tool == "python") %>% 
+  distinct(Respondent) %>% 
+  select(Respondent) -> python_id_next
+
+#生成4列
+sf %>% 
+  mutate(now_r = if_else(Respondent %in% r_id_now$Respondent, 1, 0),
+         now_python = if_else(Respondent %in% python_id_now$Respondent, 1, 0),
+         next_r = if_else(Respondent %in% r_id_next$Respondent, 1, 0),
+         next_python = if_else(Respondent %in% python_id_next$Respondent, 1, 0)) -> sf_rp
+sf_rp %>% count(now_r)
+sf_rp %>% count(now_python)
+sf_rp %>% count(next_r)
+sf_rp %>% count(next_python)
+```
+
+```{r}
+
+```
+
