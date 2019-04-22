@@ -14,6 +14,7 @@ output: html_notebook
 ```{r}
 library(tidyverse)
 library(tidytext)
+library(janitor)
 ```
 
 #读数据
@@ -86,17 +87,42 @@ tool_next %>%
 
 #生成4列
 sf %>% 
-  mutate(now_r = if_else(Respondent %in% r_id_now$Respondent, 1, 0),
-         now_python = if_else(Respondent %in% python_id_now$Respondent, 1, 0),
-         next_r = if_else(Respondent %in% r_id_next$Respondent, 1, 0),
-         next_python = if_else(Respondent %in% python_id_next$Respondent, 1, 0)) -> sf_rp
+  mutate(now_r = if_else(Respondent %in% r_id_now$Respondent, "yes", "no"),
+         now_python = if_else(Respondent %in% python_id_now$Respondent, "yes", "no"),
+         next_r = if_else(Respondent %in% r_id_next$Respondent, "yes", "no"),
+         next_python = if_else(Respondent %in% python_id_next$Respondent, "yes", "no")) -> sf_rp
 sf_rp %>% count(now_r)
 sf_rp %>% count(now_python)
 sf_rp %>% count(next_r)
 sf_rp %>% count(next_python)
 ```
 
+#一些描述
 ```{r}
+#编程兴趣
+sf_rp %>% tabyl(now_r, Hobby) %>% adorn_crosstab(digits = 2)
+sf_rp %>% tabyl(now_python, Hobby) %>% adorn_crosstab(digits = 2)
+```
 
+```{r}
+#职业身份
+sf_rp %>% 
+  select(Respondent, DevType, now_r, now_python, next_r, next_python) %>% 
+  unnest_tokens(input = DevType, output = type, token = "regex", pattern = ";") -> dev_rp
+
+dev_rp %>% tabyl(type, now_r) %>% adorn_percentages() %>% arrange(desc(yes)) %>% adorn_pct_formatting(digits = 2)
+dev_rp %>% tabyl(type, now_python) %>% adorn_percentages() %>% arrange(desc(yes)) %>% adorn_pct_formatting(digits = 2)
+
+dev_rp %>% tabyl(type, now_r) %>% adorn_percentages(denominator = "col") %>% arrange(desc(yes)) %>% adorn_pct_formatting(digits = 2)
+dev_rp %>% tabyl(type, now_python) %>% adorn_percentages(denominator = "col") %>% arrange(desc(yes)) %>% adorn_pct_formatting(digits = 2)
+```
+```{r}
+#教育程度
+sf_rp %>% tabyl(FormalEducation, now_r) %>% adorn_percentages() %>% arrange(desc(yes)) %>% adorn_pct_formatting(digits = 2)
+sf_rp %>% tabyl(FormalEducation, now_python) %>% adorn_percentages() %>% arrange(desc(yes)) %>% adorn_pct_formatting(digits = 2)
+
+sf_rp %>% tabyl(FormalEducation, now_r) %>% adorn_percentages(denominator = "col") %>% arrange(desc(yes)) %>% adorn_pct_formatting(digits = 2)
+sf_rp %>% tabyl(FormalEducation, now_python) %>% adorn_percentages(denominator = "col") %>% arrange(desc(yes)) %>% adorn_pct_formatting(digits = 2)
+```
 ```
 
