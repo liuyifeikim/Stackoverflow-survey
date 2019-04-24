@@ -1,6 +1,8 @@
 ---
 title: "R Notebook"
-output: html_notebook
+output:
+  html_document:
+    df_print: paged
 ---
 
 研究问题：
@@ -97,15 +99,16 @@ sf_rp %>% count(next_r)
 sf_rp %>% count(next_python)
 ```
 
-#一些描述
-```{r}
+#一些数据描述
+
 #编程兴趣
+```{r}
 sf_rp %>% tabyl(now_r, Hobby) %>% adorn_crosstab(digits = 2)
 sf_rp %>% tabyl(now_python, Hobby) %>% adorn_crosstab(digits = 2)
 ```
 
-```{r}
 #职业身份
+```{r}
 sf_rp %>% 
   select(Respondent, DevType, now_r, now_python, next_r, next_python) %>% 
   unnest_tokens(input = DevType, output = type, token = "regex", pattern = ";") -> dev_rp
@@ -116,13 +119,84 @@ dev_rp %>% tabyl(type, now_python) %>% adorn_percentages() %>% arrange(desc(yes)
 dev_rp %>% tabyl(type, now_r) %>% adorn_percentages(denominator = "col") %>% arrange(desc(yes)) %>% adorn_pct_formatting(digits = 2)
 dev_rp %>% tabyl(type, now_python) %>% adorn_percentages(denominator = "col") %>% arrange(desc(yes)) %>% adorn_pct_formatting(digits = 2)
 ```
-```{r}
+```{r, fig.height=8, fig.width=15}
+dev_rp %>% tabyl(type, now_r) %>% adorn_percentages(denominator = "col") %>% select(-no) %>% rename(r = yes) -> dev_r
+dev_rp %>% tabyl(type, now_python) %>% adorn_percentages(denominator = "col") %>% select(-no) %>% rename(python = yes) -> dev_python
+dev_r %>% left_join(dev_python, by = "type") %>% 
+  gather(key = tool, value = proportion, c(r, python)) %>% 
+  ggplot(aes(type, proportion, fill = tool)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  theme(axis.text = element_text(size = 15),
+        axis.title = element_blank(),
+        legend.text = element_text(size = 15),
+        legend.title = element_text(size = 15)) +
+  guides(fill = guide_legend(reverse = TRUE))  #调转图例位置
+```
+*R的数据科学家和机器学习专家、数据和商业分析师比例更大
+*python的全栈开发工程师，前端和后端开发工程师比例更大
+
+
 #教育程度
+```{r}
 sf_rp %>% tabyl(FormalEducation, now_r) %>% adorn_percentages() %>% arrange(desc(yes)) %>% adorn_pct_formatting(digits = 2)
 sf_rp %>% tabyl(FormalEducation, now_python) %>% adorn_percentages() %>% arrange(desc(yes)) %>% adorn_pct_formatting(digits = 2)
 
 sf_rp %>% tabyl(FormalEducation, now_r) %>% adorn_percentages(denominator = "col") %>% arrange(desc(yes)) %>% adorn_pct_formatting(digits = 2)
 sf_rp %>% tabyl(FormalEducation, now_python) %>% adorn_percentages(denominator = "col") %>% arrange(desc(yes)) %>% adorn_pct_formatting(digits = 2)
 ```
+```{r, fig.height=8, fig.width=15}
+sf_rp %>% tabyl(FormalEducation, now_r) %>% adorn_percentages(denominator = "col") %>% select(-no) %>% rename(r = yes) -> edu_r
+sf_rp %>% tabyl(FormalEducation, now_python) %>% adorn_percentages(denominator = "col") %>% select(-no) %>% rename(python = yes) -> edu_python
+edu_r %>% left_join(edu_python, by = "FormalEducation") %>% 
+  gather(key = tool, value = proportion, c(r, python)) %>% 
+  ggplot(aes(FormalEducation, proportion, fill = tool)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  theme(axis.text = element_text(size = 15),
+        axis.title = element_blank(),
+        legend.text = element_text(size = 15),
+        legend.title = element_text(size = 15)) +
+  guides(fill = guide_legend(reverse = TRUE))  #调转图例位置
 ```
+*R在硕士和博士学位上的比例比python更大
+
+
+#编程经验
+```{r, fig.height=8, fig.width=15}
+sf_rp %>% tabyl(YearsCoding, now_r) %>% adorn_percentages(denominator = "col") %>% select(-no) %>% rename(r = yes) -> edu_r
+sf_rp %>% tabyl(YearsCoding, now_python) %>% adorn_percentages(denominator = "col") %>% select(-no) %>% rename(python = yes) -> edu_python
+edu_r %>% left_join(edu_python, by = "YearsCoding") %>% 
+  gather(key = tool, value = proportion, c(r, python)) %>% 
+  ggplot(aes(YearsCoding, proportion, fill = tool)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  theme(axis.text = element_text(size = 15),
+        axis.title = element_blank(),
+        legend.text = element_text(size = 15),
+        legend.title = element_text(size = 15)) +
+  guides(fill = guide_legend(reverse = TRUE))  #调转图例位置
+
+sf_rp %>% tabyl(YearsCodingProf, now_r) %>% adorn_percentages(denominator = "col") %>% select(-no) %>% rename(r = yes) -> edu_r
+sf_rp %>% tabyl(YearsCodingProf, now_python) %>% adorn_percentages(denominator = "col") %>% select(-no) %>% rename(python = yes) -> edu_python
+edu_r %>% left_join(edu_python, by = "YearsCodingProf") %>% 
+  gather(key = tool, value = proportion, c(r, python)) %>% 
+  ggplot(aes(YearsCodingProf, proportion, fill = tool)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  theme(axis.text = element_text(size = 15),
+        axis.title = element_blank(),
+        legend.text = element_text(size = 15),
+        legend.title = element_text(size = 15)) +
+  guides(fill = guide_legend(reverse = TRUE))  #调转图例位置
+```
+*两者编程经验相当
+
+
+
+```{r}
+
+```
+
+
 
