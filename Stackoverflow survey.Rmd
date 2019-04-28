@@ -101,6 +101,31 @@ sf_rp %>% count(next_python)
 
 #一些数据描述
 
+```{r}
+# com_fun <- function(data, var, var_r, var_python){
+#   var <- noquote(var)
+#   var_r <- noquote(var_r)
+#   var_python <- noquote(var_python)
+#   data %>% tabyl(var, var_r) %>% adorn_percentages(denominator = "col") %>% select(-no) %>% rename(r = yes) -> group_r
+#   data %>% tabyl(var, var_python) %>% adorn_percentages(denominator = "col") %>% select(-no) %>% rename(python = yes) -> group_python
+# group_r %>% left_join(group_python) -> result
+# return(result)
+# }
+# %>%
+#   gather(key = tool, value = proportion, c(r, python)) %>%
+#   ggplot(aes(var, proportion, fill = tool)) +
+#   geom_col(position = "dodge") +
+#   coord_flip() +
+#   theme(axis.text = element_text(size = 15),
+#         axis.title = element_blank(),
+#         legend.text = element_text(size = 15),
+#         legend.title = element_text(size = 15)) +
+#   guides(fill = guide_legend(reverse = TRUE)) -> result_plot  #调转图例位置
+# return(result_plot)
+com_fun(sf_rp, "UndergradMajor", "now_r", "now_python")
+```
+
+
 #编程兴趣
 ```{r}
 sf_rp %>% tabyl(now_r, Hobby) %>% adorn_crosstab(digits = 2)
@@ -160,6 +185,7 @@ edu_r %>% left_join(edu_python, by = "FormalEducation") %>%
   guides(fill = guide_legend(reverse = TRUE))  #调转图例位置
 ```
 *R在硕士和博士学位上的比例比python更大
+*python在低学历上占比更大
 
 
 #编程经验
@@ -190,13 +216,27 @@ edu_r %>% left_join(edu_python, by = "YearsCodingProf") %>%
         legend.title = element_text(size = 15)) +
   guides(fill = guide_legend(reverse = TRUE))  #调转图例位置
 ```
-*两者编程经验相当
+*R和python两者编程经验相当，R在较长编程经验上的比例更大，原因可能是Python的兴起时间更短
 
 
-
-```{r}
-
+#专业类型
+```{r, fig.height=8, fig.width=15}
+sf_rp %>% tabyl(UndergradMajor, now_r) %>% adorn_percentages(denominator = "col") %>% select(-no) %>% rename(r = yes) -> major_r
+sf_rp %>% tabyl(UndergradMajor, now_python) %>% adorn_percentages(denominator = "col") %>% select(-no) %>% rename(python = yes) -> major_python
+major_r %>% left_join(major_python, by = "UndergradMajor") %>% 
+  gather(key = tool, value = proportion, c(r, python)) %>% 
+  ggplot(aes(UndergradMajor, proportion, fill = tool)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  theme(axis.text = element_text(size = 13),
+        axis.title = element_blank(),
+        legend.text = element_text(size = 15),
+        legend.title = element_text(size = 15)) +
+  guides(fill = guide_legend(reverse = TRUE))  #调转图例位置
 ```
-
+*两种语言使用者的主要专业来源均为计算机或软件工程师，但PYTHON比例更高
+*R中数学家和统计学家、社会科学家、自然科学家、商科比例高于PYTHON
+*PYTHON中信息技术、电子工程等高于R
+*整体而言R中有更多的科学家，PYTHON中有更多的工程师
 
 
