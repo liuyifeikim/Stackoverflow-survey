@@ -111,30 +111,28 @@ com_fun <- function(data, var, r_var, python_var){
 group_r %>% left_join(group_python) -> result
 return(result)
 }
-
-com_plot_fun <- function(data, var, r_var, python_var){
-  var <- enquo(var)
-  r_var <- enquo(r_var)
-  python_var <- enquo(python_var)
-  data %>% tabyl(!!var, !!r_var) %>% adorn_percentages(denominator = "col") %>% select(-no) %>% rename(r = yes) -> group_r
-  data %>% tabyl(!!var, !!python_var) %>% adorn_percentages(denominator = "col") %>% select(-no) %>% rename(python = yes) -> group_python
-group_r %>% 
-  left_join(group_python) %>%
-  gather(key = tool, value = proportion, c(r, python)) %>%
-  ggplot(aes(!!var, proportion, fill = tool)) +   #这一步有问题
-  geom_col(position = "dodge") +  #堆叠柱状图
-  coord_flip() +
-  theme(axis.text = element_text(size = 15),
-        axis.title = element_blank(),
-        legend.text = element_text(size = 15),
-        legend.title = element_text(size = 15)) +
-  guides(fill = guide_legend(reverse = TRUE)) -> result_plot  #调转图例位置
-return(result_plot)  #输出图片
-}
-
 com_fun(sf_rp, UndergradMajor, now_r, now_python)
-com_plot_fun(sf_rp, UndergradMajor, now_r, now_python)
 
+# com_plot_fun <- function(data, var, r_var, python_var){
+#   var <- enquo(var)
+#   r_var <- enquo(r_var)
+#   python_var <- enquo(python_var)
+#   data %>% tabyl(!!var, !!r_var) %>% adorn_percentages(denominator = "col") %>% select(-no) %>% rename(r = yes) -> group_r
+#   data %>% tabyl(!!var, !!python_var) %>% adorn_percentages(denominator = "col") %>% select(-no) %>% rename(python = yes) -> group_python
+# group_r %>% 
+#   left_join(group_python) %>%
+#   gather(key = tool, value = proportion, c(r, python)) %>%
+#   ggplot(aes(!!var, proportion, fill = tool)) +   #这一步有问题
+#   geom_col(position = "dodge") +  #堆叠柱状图
+#   coord_flip() +
+#   theme(axis.text = element_text(size = 15),
+#         axis.title = element_blank(),
+#         legend.text = element_text(size = 15),
+#         legend.title = element_text(size = 15)) +
+#   guides(fill = guide_legend(reverse = TRUE)) -> result_plot  #调转图例位置
+# return(result_plot)  #输出图片
+# }
+# com_plot_fun(sf_rp, UndergradMajor, now_r, now_python)
 ```
 
 
@@ -267,3 +265,127 @@ com_fun(sf_rp, CompanySize, now_r, now_python) %>%
 ```
 *PYTHON使用者在500人以下公司占比高于R使用者
 *R使用者在500人以上公司占比高于PYTHON使用者
+
+
+#在用R和PYTHON的人以后想用什么
+```{r, fig.height=10, fig.width=15}
+#在用R的人
+sf_rp %>% 
+  filter(now_r == "yes") %>% 
+  select(Respondent, LanguageDesireNextYear) %>% 
+  unnest_tokens(input = LanguageDesireNextYear, output = tool, token = "regex", pattern = ";") %>% 
+  count(tool) %>% 
+  mutate(proportion = round(n / sum(n) * 100, 2)) %>% 
+  filter(!is.na(tool)) %>% 
+  ggplot(aes(reorder(tool, proportion), proportion)) +
+  geom_col(fill = "darkblue") +
+  coord_flip() +
+  labs(x = NULL, y = NULL) +
+  theme(axis.text = element_text(size = 15)) +
+  geom_text(aes(label = proportion), size = 4, hjust = -0.1)
+
+#在用PYTHON的人
+sf_rp %>% 
+  filter(now_python == "yes") %>% 
+  select(Respondent, LanguageDesireNextYear) %>% 
+  unnest_tokens(input = LanguageDesireNextYear, output = tool, token = "regex", pattern = ";") %>% 
+  count(tool) %>% 
+  mutate(proportion = round(n / sum(n) * 100, 2)) %>% 
+  filter(!is.na(tool)) %>% 
+  ggplot(aes(reorder(tool, proportion), proportion)) +
+  geom_col(fill = "darkblue") +
+  coord_flip() +
+  labs(x = NULL, y = NULL) +
+  theme(axis.text = element_text(size = 15)) +
+  geom_text(aes(label = proportion), size = 4, hjust = -0.1)
+```
+不论在用哪种工具，未来想学PYTHON的人更多
+在用PYTHON的人并不特别想学R，但在用R的人很想学PYTHON
+
+
+#想学R或者PYTHON的都是什么人
+```{r, fig.height=10, fig.width=15}
+#想学R的人
+sf_rp %>% 
+  filter(next_r == "yes") %>% 
+  select(Respondent, LanguageWorkedWith) %>% 
+  unnest_tokens(input = LanguageWorkedWith, output = tool, token = "regex", pattern = ";") %>% 
+  count(tool) %>% 
+  mutate(proportion = round(n / sum(n) * 100, 2)) %>% 
+  filter(!is.na(tool)) %>% 
+  ggplot(aes(reorder(tool, proportion), proportion)) +
+  geom_col(fill = "darkblue") +
+  coord_flip() +
+  labs(x = NULL, y = NULL) +
+  theme(axis.text = element_text(size = 15)) +
+  geom_text(aes(label = proportion), size = 4, hjust = -0.1)
+
+#想学PYTHON的人
+sf_rp %>% 
+  filter(next_python == "yes") %>% 
+  select(Respondent, LanguageWorkedWith) %>% 
+  unnest_tokens(input = LanguageWorkedWith, output = tool, token = "regex", pattern = ";") %>% 
+  count(tool) %>% 
+  mutate(proportion = round(n / sum(n) * 100, 2)) %>% 
+  filter(!is.na(tool)) %>% 
+  ggplot(aes(reorder(tool, proportion), proportion)) +
+  geom_col(fill = "darkblue") +
+  coord_flip() +
+  labs(x = NULL, y = NULL) +
+  theme(axis.text = element_text(size = 15)) +
+  geom_text(aes(label = proportion), size = 4, hjust = -0.1)
+```
+
+#未来5年想做什么
+```{r, fig.height=10, fig.width=15}
+com_fun(sf_rp, HopeFiveYears, now_r, now_python)%>% 
+  gather(key = tool, value = proportion, c(r, python)) %>% 
+  ggplot(aes(reorder(HopeFiveYears, proportion), proportion, fill = tool)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  theme(axis.text = element_text(size = 15),
+        axis.title = element_blank(),
+        legend.text = element_text(size = 15),
+        legend.title = element_text(size = 15)) +
+  guides(fill = guide_legend(reverse = TRUE))
+```
+*在用PYTHON的人更多想维持原状或创业
+
+
+#对潜在工作机会的评价
+```{r}
+# sf_rp %>% 
+#   select(starts_with("AssessJob"))
+
+
+
+com_fun2 <- function(data, var, r_var, python_var){
+  var_en <- enquo(var)
+  r_var_en <- enquo(r_var)
+  python_var_en <- enquo(python_var)
+  data %>% select(!!r_var_en, !!python_var_en, !!var_en) %>% 
+  filter(!is.na(!!var_en)) %>% 
+  gather(key = tool, value = yn, c(!!r_var_en, !!python_var_en)) %>% 
+  filter(yn == "yes") %>% 
+  mutate(tool = if_else(tool == "now_r" , "r", "python")) -> long_data
+  return(long_data)
+}
+com_fun2(sf_rp, AssessJob4, now_r, now_python) -> result_4
+
+com_fun_plot2 <- function(data, xvar = "group", yvar = "score"){
+    ggplot(data, aes_string(x = xvar, y = yvar)) +
+    geom_boxplot() -> result_plot
+  return(result_plot)
+}
+com_fun_plot2(result_4, "tool", "AssessJob4") #要用引号才能输出结果
+
+sf_rp %>% 
+  select(now_r, now_python, AssessJob4) %>% 
+  filter(!is.na(AssessJob4)) %>% 
+  gather(key = tool, value = yn, c(now_r, now_python)) %>% 
+  filter(yn == "yes") %>% 
+  mutate(tool = if_else(tool == "now_r" , "r", "python")) %>% 
+  ggplot(aes(tool, AssessJob4)) +
+  geom_boxplot()
+```
+
