@@ -299,8 +299,8 @@ sf_rp %>%
   theme(axis.text = element_text(size = 15)) +
   geom_text(aes(label = proportion), size = 4, hjust = -0.1)
 ```
-不论在用哪种工具，未来想学PYTHON的人更多
-在用PYTHON的人并不特别想学R，但在用R的人很想学PYTHON
+*不论在用哪种工具，未来想学PYTHON的人更多
+*在用PYTHON的人并不特别想学R，但在用R的人很想学PYTHON
 
 
 #想学R或者PYTHON的都是什么人
@@ -354,11 +354,6 @@ com_fun(sf_rp, HopeFiveYears, now_r, now_python)%>%
 
 #对潜在工作机会的评价
 ```{r}
-# sf_rp %>% 
-#   select(starts_with("AssessJob"))
-
-
-
 com_fun2 <- function(data, var, r_var, python_var){
   var_en <- enquo(var)
   r_var_en <- enquo(r_var)
@@ -370,22 +365,23 @@ com_fun2 <- function(data, var, r_var, python_var){
   mutate(tool = if_else(tool == "now_r" , "r", "python")) -> long_data
   return(long_data)
 }
-com_fun2(sf_rp, AssessJob4, now_r, now_python) -> result_4
-
-com_fun_plot2 <- function(data, xvar = "group", yvar = "score"){
+com_fun_plot2 <- function(data, xvar = "group", yvar = "score", title = "title"){
     ggplot(data, aes_string(x = xvar, y = yvar)) +
-    geom_boxplot() -> result_plot
+    geom_boxplot() +
+    ggtitle(label = title)-> result_plot
   return(result_plot)
 }
-com_fun_plot2(result_4, "tool", "AssessJob4") #要用引号才能输出结果
-
-sf_rp %>% 
-  select(now_r, now_python, AssessJob4) %>% 
-  filter(!is.na(AssessJob4)) %>% 
-  gather(key = tool, value = yn, c(now_r, now_python)) %>% 
-  filter(yn == "yes") %>% 
-  mutate(tool = if_else(tool == "now_r" , "r", "python")) %>% 
-  ggplot(aes(tool, AssessJob4)) +
-  geom_boxplot()
+com_fun_plot2(com_fun2(sf_rp, AssessJob1, now_r, now_python), "tool", "AssessJob1", "The industry that I'd be working in") #要用引号才能输出结果
+com_fun_plot2(com_fun2(sf_rp, AssessJob2, now_r, now_python), "tool", "AssessJob2", "The financial performance or funding status of the company or organization")
+com_fun_plot2(com_fun2(sf_rp, AssessJob3, now_r, now_python), "tool", "AssessJob3", "The specific department or team I'd be working on")
+com_fun_plot2(com_fun2(sf_rp, AssessJob4, now_r, now_python), "tool", "AssessJob4", "The languages, frameworks, and other technologies I'd be working with")
+com_fun_plot2(com_fun2(sf_rp, AssessJob5, now_r, now_python), "tool", "AssessJob5", "The compensation and benefits offered") 
+com_fun_plot2(com_fun2(sf_rp, AssessJob6, now_r, now_python), "tool", "AssessJob6", "The office environment or company culture") 
+com_fun_plot2(com_fun2(sf_rp, AssessJob7, now_r, now_python), "tool", "AssessJob7", "The opportunity to work from home/remotely") 
+com_fun_plot2(com_fun2(sf_rp, AssessJob8, now_r, now_python), "tool", "AssessJob8", "Opportunities for professional development") 
+com_fun_plot2(com_fun2(sf_rp, AssessJob9, now_r, now_python), "tool", "AssessJob9", "The diversity of the company or organization") 
+com_fun_plot2(com_fun2(sf_rp, AssessJob10, now_r, now_python), "tool", "AssessJob10", "How widely used or impactful the product or service I'd be working on is") 
 ```
-
+*用R的人相对没那么关注工作的部门和团队，以及产品和服务的影响范围
+*用R的人更关注工作过程中用的语言和框架，也更关心是否能够远程办公
+*其他方面R和PYTHON用户的差异不大
