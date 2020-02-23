@@ -1,0 +1,56 @@
+---
+title: "SURVEY2019"
+output: html_document
+---
+
+```{r 载入相关库}
+library(tidyverse)
+library(tidytext)
+```
+
+```{r 读入数据}
+survey_2019 <- read_csv("../../../DATA/developer_survey_2019/survey_results_public.csv", col_names = TRUE)
+survey_2019
+glimpse(survey_2019)
+```
+
+```{r 编程语言使用}
+#在使用的语言及明年想学的语言
+survey_2019 %>% 
+  select(Respondent, LanguageWorkedWith, LanguageDesireNextYear) %>% 
+  gather(key = type, value = lang_list, LanguageWorkedWith:LanguageDesireNextYear) %>% 
+  unnest_tokens(input = lang_list, output = lang, token = "regex", pattern = ";") %>% 
+  count(type, lang) %>% 
+  spread(key = type, value = n) %>% 
+  select(lang, LanguageWorkedWith, LanguageDesireNextYear) %>% 
+  filter(!is.na(lang)) %>% 
+  mutate(new_rate = LanguageDesireNextYear / LanguageWorkedWith) %>% 
+  arrange(-new_rate)
+
+
+#排除明年想学但现在已经在用的语言：新学习指数
+survey_2019 %>% 
+  select(Respondent, LanguageWorkedWith, LanguageDesireNextYear) %>% 
+  gather(key = type, value = lang_list, LanguageWorkedWith:LanguageDesireNextYear) %>% 
+  unnest_tokens(input = lang_list, output = lang, token = "regex", pattern = ";") %>% 
+  arrange(Respondent, desc(type), lang) %>%        #将目前在用的排在前面
+  distinct(Respondent, lang, .keep_all = TRUE) %>% #保留其他没有处理的列
+  count(type, lang) %>% 
+  spread(key = type, value = n) %>% 
+  select(lang, LanguageWorkedWith, LanguageDesireNextYear) %>% 
+  filter(!is.na(lang)) %>% 
+  mutate(new_rate = LanguageDesireNextYear / LanguageWorkedWith) %>% 
+  arrange(-new_rate)
+
+#现在在学但明年不想再学的语言：放弃指数
+survey_2019 %>% 
+  select(Respondent, LanguageWorkedWith, LanguageDesireNextYear) %>% 
+  
+```
+排除现在在学明年继续学的记录，仅考虑没有用，明年想新学的情况，将两个频数相除，构建每种语言的从零学习指数，指数数值越高说明该语言现在没有用但之后想学的人越多，说明该语言的流行程度正处在上升阶段。
+同时构建语言放弃指数，即目前在用，但明年不想再用的比例，该指数越高，说明该编程语言的流行程度在降低
+
+```{r 分析主要变量}
+survey_2019 %>% count(MainBranch)
+```
+
