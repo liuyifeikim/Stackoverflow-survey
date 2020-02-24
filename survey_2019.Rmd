@@ -3,9 +3,17 @@ title: "SURVEY2019"
 output: html_document
 ---
 
+1、caret并行计算
+2、h2o
+
 ```{r 载入相关库}
 library(tidyverse)
 library(tidytext)
+library(caret)
+library(tictoc)
+library(parallel)
+library(doParallel)
+library(randomForest)
 ```
 
 ```{r 读入数据}
@@ -41,16 +49,95 @@ survey_2019 %>%
   filter(!is.na(lang)) %>% 
   mutate(new_rate = LanguageDesireNextYear / LanguageWorkedWith) %>% 
   arrange(-new_rate)
-
-#现在在学但明年不想再学的语言：放弃指数
-survey_2019 %>% 
-  select(Respondent, LanguageWorkedWith, LanguageDesireNextYear) %>% 
-  
 ```
 排除现在在学明年继续学的记录，仅考虑没有用，明年想新学的情况，将两个频数相除，构建每种语言的从零学习指数，指数数值越高说明该语言现在没有用但之后想学的人越多，说明该语言的流行程度正处在上升阶段。
-同时构建语言放弃指数，即目前在用，但明年不想再用的比例，该指数越高，说明该编程语言的流行程度在降低
 
-```{r 分析主要变量}
-survey_2019 %>% count(MainBranch)
+```{r 生成当前在用工具二分变量矩阵和结果变量}
+#自变量
+survey_2019 %>% 
+  select(Respondent, LanguageWorkedWith) %>% 
+  unnest_tokens(input = LanguageWorkedWith, output = lang, token = "regex", pattern = ";") %>% 
+  count(Respondent, lang) %>% 
+  spread(key = lang, value = n, fill = 0) %>% 
+  select(-c(`<NA>`)) -> x_tbl
+x_tbl
+
+#因变量
+survey_2019 %>%   
+  select(Respondent, LanguageDesireNextYear) %>% 
+  unnest_tokens(input = LanguageDesireNextYear, output = lang, token = "regex", pattern = ";") %>% 
+  filter(lang == "r") %>% 
+  select(Respondent)-> y_tbl  #仅保留ID
+y_tbl
+
+#两者合并
+x_tbl %>% 
+  mutate(r_yn = as.factor(ifelse(Respondent %in% y_tbl$Respondent, 1, 0))) %>% 
+  select(-Respondent) -> model_wide
+model_wide
+
+#因变量分布
+model_wide %>% count(r_yn)
+```
+
+```{r 划分训练和测试集}
+set.seed(100)
+train_id <- createDataPartition(model_wide$r_yn, p = 0.7, list = FALSE)
+train <- model_wide[train_id,]
+test <- model_wide[-train_id,]
+dim(train)
+dim(test)
+table(train$r_yn) %>% prop.table()
+table(test$r_yn) %>% prop.table()
+```
+
+
+```{r 使用caret进行训练}
+#看有哪些可调整的参数
+modelLookup("rf")
+
+#设定交叉检验方案
+cv_ctrl <- trainControl(method = "cv", number = 5, verboseIter = TRUE)
+```
+
+
+```{r 使用caret进行训练}
+#模型训练并计算时间
+tic()
+set.seed(100)
+model_rf <- train(
+  r_yn ~ .,
+  data = train,
+  method = "rf",
+  trControl = cv_ctrl,
+  metric = "f1"
+)
+toc()
+
+#查看结果
+model_rf
+```
+
+```{r 并行训练}
+#设定集群
+cl <- makeCluster(12)
+registerDoParallel(cl)
+
+#训练模型
+tic()
+set.seed(100)
+model_rf_par <- train(
+  r_yn ~ .,
+  data = train,
+  method = "rf",
+  trControl = cv_ctrl
+)
+toc()
+
+#停止集群
+stopCluster(cl)
+
+#查看结果
+model_rf_par
 ```
 
