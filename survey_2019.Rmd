@@ -4,7 +4,9 @@ output: html_document
 ---
 
 1、caret并行计算
-2、h2o
+2、summaryFunction = prSummary
+2、网格搜索和随机搜索
+3、h2o
 
 ```{r 载入相关库}
 library(tidyverse)
@@ -14,6 +16,8 @@ library(tictoc)
 library(parallel)
 library(doParallel)
 library(randomForest)
+library(mlbench) #ranger
+library(pryr)
 ```
 
 ```{r 读入数据}
@@ -59,7 +63,7 @@ survey_2019 %>%
   unnest_tokens(input = LanguageWorkedWith, output = lang, token = "regex", pattern = ";") %>% 
   count(Respondent, lang) %>% 
   spread(key = lang, value = n, fill = 0) %>% 
-  select(-c(`<NA>`)) -> x_tbl
+  select(-c(`<NA>`, "r")) -> x_tbl
 x_tbl
 
 #因变量
@@ -72,12 +76,13 @@ y_tbl
 
 #两者合并
 x_tbl %>% 
-  mutate(r_yn = as.factor(ifelse(Respondent %in% y_tbl$Respondent, 1, 0))) %>% 
-  select(-Respondent) -> model_wide
+  mutate(r_yn = factor(ifelse(Respondent %in% y_tbl$Respondent, "yes", "no"),levels = c("yes", "no"))) %>% 
+  select(-Respondent) -> model_wide #需要将因变量处理成因子，而且要有字符，如果只是0/1后面用ROC选模型会报错
 model_wide
 
 #因变量分布
 model_wide %>% count(r_yn)
+levels(model_wide$r_yn)
 ```
 
 ```{r 划分训练和测试集}
@@ -87,6 +92,8 @@ train <- model_wide[train_id,]
 test <- model_wide[-train_id,]
 dim(train)
 dim(test)
+table(train$r_yn)
+table(test$r_yn)
 table(train$r_yn) %>% prop.table()
 table(test$r_yn) %>% prop.table()
 ```
@@ -97,31 +104,46 @@ table(test$r_yn) %>% prop.table()
 modelLookup("rf")
 
 #设定交叉检验方案
-cv_ctrl <- trainControl(method = "cv", number = 5, verboseIter = TRUE)
+cv_ctrl <- trainControl(method = "cv", 
+                        number = 5, 
+                        verboseIter = TRUE)
+
+#可以用F值、precision、recall、auc
+cv_ctrl_pr <- trainControl(method = "cv", 
+                           number = 5, 
+                           summaryFunction = prSummary,
+                           verboseIter = TRUE)
+
+#可以用AUC
+cv_ctrl_two <- trainControl(method = "cv", 
+                            number = 5, 
+                            summaryFunction = twoClassSummary,
+                            classProbs = TRUE,
+                            verboseIter = TRUE)
 ```
 
 
 ```{r 使用caret进行训练}
-#模型训练并计算时间
-tic()
-set.seed(100)
-model_rf <- train(
-  r_yn ~ .,
-  data = train,
-  method = "rf",
-  trControl = cv_ctrl,
-  metric = "f1"
-)
-toc()
-
-#查看结果
-model_rf
+# #模型训练并计算时间
+# tic()
+# set.seed(100)
+# model_rf <- train(
+#   r_yn ~ .,
+#   data = train,
+#   method = "rf",
+#   trControl = cv_ctrl
+# )
+# toc()
+# 
+# #查看结果
+# model_rf
 ```
 
-```{r 并行训练}
+
+```{r 并行训练：rf}
 #设定集群
-cl <- makeCluster(12)
-registerDoParallel(cl)
+cl_12 <- makeCluster(12)
+registerDoParallel(cl_12)
 
 #训练模型
 tic()
@@ -129,8 +151,9 @@ set.seed(100)
 model_rf_par <- train(
   r_yn ~ .,
   data = train,
-  method = "rf",
-  trControl = cv_ctrl
+  method = "rf",  #默认500棵树
+  trControl = cv_ctrl_pr,
+  metric = "F"   #会默认将level中的第1个作为阳性样本计算
 )
 toc()
 
@@ -139,5 +162,78 @@ stopCluster(cl)
 
 #查看结果
 model_rf_par
+plot(model_rf_par)
+
+#变量重要性
+varImp(model_rf_par)
 ```
+与非并行方案相比，用12线程的并行方案大概只使用了一半时间。
+
+```{r 测试集性能评估}
+y_pred_rf <- predict(model_rf_par, test)
+confusionMatrix(y_pred_rf, test$r_yn, positive = "1", mode = "prec_recall")
+```
+
+```{r 并行训练：mlbench库}
+#设定集群
+cl_12 <- makeCluster(12)
+registerDoParallel(cl_12)
+
+#训练模型
+tic()
+set.seed(100)
+model_ranger_par <- train(
+  r_yn ~ .,
+  data = train,
+  method = "ranger",
+  trControl = cv_ctrl_pr,
+  metric = "F"
+)
+toc()
+
+#停止集群
+stopCluster(cl_12)
+
+#查看结果
+model_ranger_par
+plot(model_ranger_par)
+```
+使用ranger库要比使用randomforest库运行速度要快
+
+```{r 测试集性能评估}
+y_pred_ranger <- predict(model_ranger_par, test)
+confusionMatrix(y_pred_ranger, test$r_yn, positive = "1", mode = "prec_recall")
+```
+
+```{r 参数调整, grid方法}
+#设定参数范围
+grid <- data.frame(mtry = seq(1, ncol(train), by = 2),
+                   splitrule = "gini",
+                   min.node.size = 1)  #等同于expand.grid
+
+#设定集群
+cl_12 <- makeCluster(12)
+registerDoParallel(cl_12)
+
+#训练模型
+tic()
+set.seed(100)
+model_ranger_par_tune <- train(
+  r_yn ~ .,
+  data = train,
+  method = "ranger",     #默认500棵树
+  trControl = cv_ctrl_two,
+  metric = "ROC",
+  tuneGrid = grid
+)
+toc()
+
+#停止集群
+stopCluster(cl_12)
+
+#查看结果
+model_ranger_par_tune
+plot(model_ranger_par_tune)
+```
+
 
