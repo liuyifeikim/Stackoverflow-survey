@@ -3,9 +3,10 @@ title: "SURVEY2019"
 output: html_document
 ---
 
-1、caret并行计算
-2、summaryFunction = prSummary
-2、网格搜索和随机搜索
+1、增加变量
+2、降维
+3、RFE
+2、adaptive cv
 3、h2o
 
 ```{r 载入相关库}
@@ -16,7 +17,7 @@ library(tictoc)
 library(parallel)
 library(doParallel)
 library(randomForest)
-library(mlbench) #ranger
+library(mlbench)  #ranger
 library(pryr)
 ```
 
@@ -63,7 +64,7 @@ survey_2019 %>%
   unnest_tokens(input = LanguageWorkedWith, output = lang, token = "regex", pattern = ";") %>% 
   count(Respondent, lang) %>% 
   spread(key = lang, value = n, fill = 0) %>% 
-  select(-c(`<NA>`, "r")) -> x_tbl
+  select(-c(`<NA>`)) -> x_tbl
 x_tbl
 
 #因变量
@@ -102,6 +103,7 @@ table(test$r_yn) %>% prop.table()
 ```{r 使用caret进行训练}
 #看有哪些可调整的参数
 modelLookup("rf")
+modelLookup("ranger")
 
 #设定交叉检验方案
 cv_ctrl <- trainControl(method = "cv", 
@@ -120,89 +122,23 @@ cv_ctrl_two <- trainControl(method = "cv",
                             summaryFunction = twoClassSummary,
                             classProbs = TRUE,
                             verboseIter = TRUE)
-```
 
+#可以用randomsearch
+cv_ctrl_ran <- trainControl(method = "cv", 
+                            number = 5, 
+                            summaryFunction = twoClassSummary,
+                            classProbs = TRUE,
+                            verboseIter = TRUE,
+                            search = "random")
 
-```{r 使用caret进行训练}
-# #模型训练并计算时间
-# tic()
-# set.seed(100)
-# model_rf <- train(
-#   r_yn ~ .,
-#   data = train,
-#   method = "rf",
-#   trControl = cv_ctrl
-# )
-# toc()
-# 
-# #查看结果
-# model_rf
-```
-
-
-```{r 并行训练：rf}
-#设定集群
-cl_12 <- makeCluster(12)
-registerDoParallel(cl_12)
-
-#训练模型
-tic()
-set.seed(100)
-model_rf_par <- train(
-  r_yn ~ .,
-  data = train,
-  method = "rf",  #默认500棵树
-  trControl = cv_ctrl_pr,
-  metric = "F"   #会默认将level中的第1个作为阳性样本计算
-)
-toc()
-
-#停止集群
-stopCluster(cl)
-
-#查看结果
-model_rf_par
-plot(model_rf_par)
-
-#变量重要性
-varImp(model_rf_par)
-```
-与非并行方案相比，用12线程的并行方案大概只使用了一半时间。
-
-```{r 测试集性能评估}
-y_pred_rf <- predict(model_rf_par, test)
-confusionMatrix(y_pred_rf, test$r_yn, positive = "1", mode = "prec_recall")
-```
-
-```{r 并行训练：mlbench库}
-#设定集群
-cl_12 <- makeCluster(12)
-registerDoParallel(cl_12)
-
-#训练模型
-tic()
-set.seed(100)
-model_ranger_par <- train(
-  r_yn ~ .,
-  data = train,
-  method = "ranger",
-  trControl = cv_ctrl_pr,
-  metric = "F"
-)
-toc()
-
-#停止集群
-stopCluster(cl_12)
-
-#查看结果
-model_ranger_par
-plot(model_ranger_par)
-```
-使用ranger库要比使用randomforest库运行速度要快
-
-```{r 测试集性能评估}
-y_pred_ranger <- predict(model_ranger_par, test)
-confusionMatrix(y_pred_ranger, test$r_yn, positive = "1", mode = "prec_recall")
+#adaptive cv
+cv_ctrl_ad <- trainControl(method = "cv", 
+                           number = 5, 
+                           summaryFunction = twoClassSummary,
+                           classProbs = TRUE,
+                           adaptive = list(min = 5, alpha = 0.05, method = "BT", complete = TRUE),
+                           verboseIter = TRUE,
+                           search = "random")
 ```
 
 ```{r 参数调整, grid方法}
@@ -212,7 +148,7 @@ grid <- data.frame(mtry = seq(1, ncol(train), by = 2),
                    min.node.size = 1)  #等同于expand.grid
 
 #设定集群
-cl_12 <- makeCluster(12)
+cl_12 <- makeCluster(12) #默认type为PSOCK，等同于snow库的makePSOCKcluster
 registerDoParallel(cl_12)
 
 #训练模型
@@ -221,7 +157,7 @@ set.seed(100)
 model_ranger_par_tune <- train(
   r_yn ~ .,
   data = train,
-  method = "ranger",     #默认500棵树
+  method = "ranger",     #mlbench和ranger库，默认500棵树
   trControl = cv_ctrl_two,
   metric = "ROC",
   tuneGrid = grid
@@ -236,4 +172,68 @@ model_ranger_par_tune
 plot(model_ranger_par_tune)
 ```
 
+```{r 测试集性能评估}
+y_pred_ranger <- predict(model_ranger_par_tune, test)
+confusionMatrix(y_pred_ranger, test$r_yn, positive = "yes", mode = "prec_recall")
+```
 
+```{r 随机参数搜索}
+#设定集群
+cl_12 <- makeCluster(12) #默认type为PSOCK，等同于snow库的makePSOCKcluster
+registerDoParallel(cl_12)
+
+#训练模型
+tic()
+set.seed(100)
+model_ranger_par_tune_ran <- train(
+  r_yn ~ .,
+  data = train,
+  method = "ranger",     #mlbench和ranger库，默认500棵树
+  trControl = cv_ctrl_ran,
+  metric = "ROC",
+  tuneLength = 10         #随机选择10种参数组合
+)
+toc()
+
+#停止集群
+stopCluster(cl_12)
+
+#查看结果
+model_ranger_par_tune_ran
+```
+
+```{r}
+y_pred_ranger_2 <- predict(model_ranger_par_tune_ran, test)
+confusionMatrix(y_pred_ranger_2, test$r_yn, positive = "yes", mode = "prec_recall")
+```
+
+```{r Adaptive cv}
+#设定集群
+cl_12 <- makeCluster(12) #默认type为PSOCK，等同于snow库的makePSOCKcluster
+registerDoParallel(cl_12)
+
+#训练模型
+tic()
+set.seed(100)
+model_ranger_par_tune_ad <- train(
+  r_yn ~ .,
+  data = train,
+  method = "ranger",     #mlbench和ranger库，默认500棵树
+  trControl = cv_ctrl_ad,
+  metric = "ROC",
+  tuneLength = 10,         #随机选择10种参数组合
+  verbose = TRUE
+)
+toc()
+
+#停止集群
+stopCluster(cl_12)
+
+#查看结果
+model_ranger_par_tune_ad
+```
+
+```{r}
+y_pred_ranger_3 <- predict(model_ranger_par_tune_ad, test)
+confusionMatrix(y_pred_ranger_3, test$r_yn, positive = "yes", mode = "prec_recall")
+```
