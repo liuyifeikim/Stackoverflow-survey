@@ -21,11 +21,17 @@ library(mlbench)  #ranger
 library(pryr)
 ```
 
+
 ```{r 读入数据}
 survey_2019 <- read_csv("../../../DATA/developer_survey_2019/survey_results_public.csv", col_names = TRUE)
 survey_2019
 glimpse(survey_2019)
 ```
+
+```{r 变量探索}
+
+```
+
 
 ```{r 编程语言使用}
 #在使用的语言及明年想学的语言
@@ -39,7 +45,6 @@ survey_2019 %>%
   filter(!is.na(lang)) %>% 
   mutate(new_rate = LanguageDesireNextYear / LanguageWorkedWith) %>% 
   arrange(-new_rate)
-
 
 #排除明年想学但现在已经在用的语言：新学习指数
 survey_2019 %>% 
@@ -150,7 +155,6 @@ grid <- data.frame(mtry = seq(1, ncol(train), by = 2),
 #设定集群
 cl_12 <- makeCluster(12) #默认type为PSOCK，等同于snow库的makePSOCKcluster
 registerDoParallel(cl_12)
-
 #训练模型
 tic()
 set.seed(100)
@@ -163,14 +167,19 @@ model_ranger_par_tune <- train(
   tuneGrid = grid
 )
 toc()
-
 #停止集群
 stopCluster(cl_12)
-
 #查看结果
 model_ranger_par_tune
 plot(model_ranger_par_tune)
 ```
+在train函数中，由一个参数为allParallel，默认为TRUE，即可以允许并行计算，一般保持默认值即可。
+
+```{r 选择在容忍度内的最简单模型}
+tol_model <- tolerance(model_ranger_par_tune$results, metric = "ROC", maximize = TRUE, tol = 5)
+model_ranger_par_tune$results[tol_model,]
+```
+我们可以使用tolerance，选择在某个容忍范围内最简单的模型，例如我们可以用AUC作为评估指标，选择一个比最优模型性能低5%，但参数(mtry)更简单的模型，结果显示，mtry=1的模型符合这个标准。
 
 ```{r 测试集性能评估}
 y_pred_ranger <- predict(model_ranger_par_tune, test)
@@ -181,7 +190,6 @@ confusionMatrix(y_pred_ranger, test$r_yn, positive = "yes", mode = "prec_recall"
 #设定集群
 cl_12 <- makeCluster(12) #默认type为PSOCK，等同于snow库的makePSOCKcluster
 registerDoParallel(cl_12)
-
 #训练模型
 tic()
 set.seed(100)
@@ -194,10 +202,8 @@ model_ranger_par_tune_ran <- train(
   tuneLength = 10         #随机选择10种参数组合
 )
 toc()
-
 #停止集群
 stopCluster(cl_12)
-
 #查看结果
 model_ranger_par_tune_ran
 ```
@@ -211,7 +217,6 @@ confusionMatrix(y_pred_ranger_2, test$r_yn, positive = "yes", mode = "prec_recal
 #设定集群
 cl_12 <- makeCluster(12) #默认type为PSOCK，等同于snow库的makePSOCKcluster
 registerDoParallel(cl_12)
-
 #训练模型
 tic()
 set.seed(100)
@@ -225,15 +230,39 @@ model_ranger_par_tune_ad <- train(
   verbose = TRUE
 )
 toc()
-
 #停止集群
 stopCluster(cl_12)
-
 #查看结果
 model_ranger_par_tune_ad
 ```
+和random search的效果一样。
 
 ```{r}
 y_pred_ranger_3 <- predict(model_ranger_par_tune_ad, test)
 confusionMatrix(y_pred_ranger_3, test$r_yn, positive = "yes", mode = "prec_recall")
 ```
+
+```{r 递归特征消除}
+#设定集群
+cl_12 <- makeCluster(12) #默认type为PSOCK，等同于snow库的makePSOCKcluster
+registerDoParallel(cl_12)
+#递归运算
+tic()
+set.seed(100)
+rfe_ctrl <- rfeControl(functions = rfFuncs, 
+                       method = "cv", 
+                       number = 5, 
+                       rerank = TRUE,
+                       saveDetails = TRUE,
+                       verbose = TRUE)
+rfProfile <- rfe(r_yn ~ .,
+                 data = train,
+                 rfeControl = rfe_ctrl)
+toc()
+#停止集群
+stopCluster(cl_12)
+#查看结果
+rfProfile
+```
+
+
