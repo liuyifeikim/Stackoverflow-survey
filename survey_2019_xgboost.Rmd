@@ -1,0 +1,75 @@
+---
+title: "xgboost_test"
+output: html_document
+---
+
+```{r}
+library(xgboost)
+library(dplyr)
+library(microbenchmark)
+```
+
+```{r 数据格式转化}
+#转化为矩阵
+train %>% mutate(r_yn = if_else(r_yn == "yes", 1, 0)) -> train_int
+test %>% mutate(r_yn = if_else(r_yn == "yes", 1, 0)) -> test_int
+train_int %>% select(-r_yn) %>% as.matrix() -> train_data #转为矩阵
+train_int %>% select(r_yn) %>% as.matrix() -> train_label #转为矩阵或向量，不能有字符
+test_int %>% select(-r_yn) %>% as.matrix() -> test_data   #转为矩阵
+test_int %>% select(r_yn) %>% as.matrix() -> test_label   #转为矩阵或向量，不能有字符
+
+#转化为DMatrix格式，将X和Y集成在一起，data需要是矩阵，label需要矩阵或向量
+dtrain <- xgb.DMatrix(data = train_data, label = train_label)
+dtest <- xgb.DMatrix(data = test_data, label = test_label)
+dtrain
+dtest
+class(dtrain)
+class(dtest)
+test_label <- getinfo(dtest, "label") #从dmatrix里面取出label
+```
+
+```{r 执行xgboost}
+#由于dtrain同时包含x、y，如果转化为dtrain，则不用设置label
+# xgb_model_base_1 <- xgboost(data = dtrain, max.depth = 2, eta = 1, nthread = 12, nrounds = 2, objective = "binary:logistic")
+# xgb_model_base_1
+
+#如果不转化为DMatrix，则需要设置data和label
+xgb_model_base <- xgboost(data = train_data, label = train_label, max.depth = 2, eta = 1, nthread = 12, nrounds = 2, objective = "binary:logistic")
+xgb_model_base
+```
+
+```{r 线程比较}
+nthread_com <- microbenchmark(
+  n_1 = xgboost(data = train_data, label = train_label, max.depth = 2, eta = 1, nthread = 1, nrounds = 2, objective = "binary:logistic"),
+  n_2 = xgboost(data = train_data, label = train_label, max.depth = 2, eta = 1, nthread = 2, nrounds = 2, objective = "binary:logistic"),
+  n_4 = xgboost(data = train_data, label = train_label, max.depth = 2, eta = 1, nthread = 4, nrounds = 2, objective = "binary:logistic"),
+  n_6 = xgboost(data = train_data, label = train_label, max.depth = 2, eta = 1, nthread = 6, nrounds = 2, objective = "binary:logistic"),
+  n_8 = xgboost(data = train_data, label = train_label, max.depth = 2, eta = 1, nthread = 8, nrounds = 2, objective = "binary:logistic"),
+  n_10 = xgboost(data = train_data, label = train_label, max.depth = 2, eta = 1, nthread = 10, nrounds = 2, objective = "binary:logistic"),
+  n_12 = xgboost(data = train_data, label = train_label, max.depth = 2, eta = 1, nthread = 12, nrounds = 2, objective = "binary:logistic"),
+  times = 5,
+  unit = "s"
+)
+nthread_com
+boxplot(nthread_com)
+```
+
+```{r 预测测试}
+pred <- predict(xgb_model_base, test_data)
+head(pred)
+prediction <- as.numeric(pred > 0.5)
+print(head(prediction))
+err <- mean(as.numeric(pred > 0.5) != test_label)
+print(paste("test-error =", err))
+```
+
+```{r 学习过程监控}
+watchlist <- list(train=dtrain, test=dtest)
+xgb_model_train <- xgb.train(data=dtrain, max.depth=2, eta=1, nthread = 2, nrounds=10, watchlist=watchlist, objective = "binary:logistic", eval.metric = "logloss", eval.metric = "error")
+xgb_model_train
+```
+
+```{r 重要性衡量}
+xgb.importance(model = xgb_model_base)
+```
+
