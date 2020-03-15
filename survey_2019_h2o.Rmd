@@ -1,0 +1,59 @@
+---
+title: "h2o"
+output: html_document
+---
+
+```{r 载入h2o库}
+library(h2o)
+```
+H2O会将读入的数据分布式地储存在计算机中。
+H2O的核心算法由JAVA写成的。
+H2O是一种开源、分布式的机器学习实现框架。有适用于R、PYTHON、SCALA等的API
+所有模型保存在H2O集群的内存中，如果要跑很多模型，需要将内存上限设定得大一些
+
+```{r 初始化h2o集群}
+h2o.init(nthreads = -1, max_mem_size = "16G")  #nthreads 默认为-1
+```
+
+```{r 数据转化}
+train_h2o <- as.h2o(train)
+test_h2o <- as.h2o(test)
+class(train_h2o)
+class(test_h2o)
+dim(train_h2o)
+dim(test_h2o)
+```
+
+```{r 数据描述}
+h2o.describe(train_h2o)
+```
+
+```{r 数据划分}
+y_train_h2o <- "r_yn"
+x_train_h2o <- setdiff(names(train_h2o), "r_yn")
+y_train_h2o
+x_train_h2o
+```
+
+
+```{r 自动训练模型}
+aml <- h2o.automl(x = x_train_h2o, 
+                  y = y_train_h2o,
+                  training_frame = train_h2o,
+                  max_models = 10,
+                  seed = 100)
+```
+
+```{r 训练结果}
+aml
+aml@leaderboard #模型效果排列
+aml@leader      #最优模型
+```
+
+```{r 结果预测}
+pred_h2o <- h2o.predict(aml, test_h2o)
+perf <- h2o.performance(aml@leader, newdata = test_h2o, train = T)
+perf
+h2o.auc(perf) #计算auc
+```
+

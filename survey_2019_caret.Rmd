@@ -1,0 +1,226 @@
+---
+title: "SURVEY2019"
+output: html_document
+---
+
+0、createFolds
+1、xgboost
+2、logloss
+1、增加变量
+2、降维
+3、RFE
+2、adaptive cv
+3、h2o
+
+```{r 载入相关库}
+library(tidyverse)
+library(tidytext)
+library(caret)
+library(tictoc)
+library(parallel)
+library(doParallel)
+library(randomForest)
+library(mlbench)  #ranger
+library(pryr)
+library(forcats)
+```
+
+
+```{r 使用caret进行训练，设定trainControl}
+#看有哪些可调整的参数
+modelLookup("rf")
+modelLookup("ranger")
+#设定交叉检验方案
+cv_ctrl <- trainControl(method = "cv", 
+                        number = 5, 
+                        verboseIter = TRUE)
+#可以用F值、precision、recall、auc
+cv_ctrl_pr <- trainControl(method = "cv", 
+                           number = 5, 
+                           summaryFunction = prSummary,
+                           verboseIter = TRUE)
+#可以用AUC
+cv_ctrl_two <- trainControl(method = "cv", 
+                            number = 5, 
+                            summaryFunction = twoClassSummary,
+                            classProbs = TRUE,
+                            verboseIter = TRUE)
+#可以用randomsearch
+cv_ctrl_ran <- trainControl(method = "cv", 
+                            number = 5, 
+                            summaryFunction = twoClassSummary,
+                            classProbs = TRUE,
+                            verboseIter = TRUE,
+                            search = "random")
+#adaptive cv
+cv_ctrl_ad <- trainControl(method = "adaptive_cv", 
+                           number = 5, 
+                           summaryFunction = twoClassSummary,
+                           classProbs = TRUE,
+                           adaptive = list(min = 2, alpha = 0.05, method = "BT", complete = TRUE),
+                           verboseIter = TRUE,
+                           search = "random")
+#自定义重抽样数据
+set.seed(100)
+myfolds <- createFolds(train$r_yn, k = 5) #生成固定的5块数据，要保持list=TRUE，否则会报错
+cv_ctrl_custom_fold <- trainControl(method = "cv",
+                                    index = myfolds,
+                                    summaryFunction = twoClassSummary,
+                                    classProbs = TRUE,
+                                    verboseIter = TRUE,
+                                    search = "random")
+```
+
+```{r 参数调整, grid方法}
+#设定参数范围
+grid <- data.frame(mtry = seq(1, ncol(train), by = 2),
+                   splitrule = "gini",
+                   min.node.size = 1)  #等同于expand.grid
+
+#设定集群
+cl_12 <- makeCluster(12) #默认type为PSOCK，等同于snow库的makePSOCKcluster
+registerDoParallel(cl_12)
+#训练模型
+tic()
+set.seed(100)
+model_ranger_par_tune <- train(
+  r_yn ~ .,
+  data = train,
+  method = "ranger",     #mlbench和ranger库，默认500棵树
+  trControl = cv_ctrl_two,
+  metric = "ROC",
+  tuneGrid = grid
+)
+toc()
+#停止集群
+stopCluster(cl_12)
+#查看结果
+model_ranger_par_tune
+plot(model_ranger_par_tune)
+```
+在train函数中，由一个参数为allParallel，默认为TRUE，即可以允许并行计算，一般保持默认值即可。
+
+```{r 选择在容忍度内的最简单模型}
+tol_model <- tolerance(model_ranger_par_tune$results, metric = "ROC", maximize = TRUE, tol = 5)
+model_ranger_par_tune$results[tol_model,]
+```
+我们可以使用tolerance，选择在某个容忍范围内最简单的模型，例如我们可以用AUC作为评估指标，选择一个比最优模型性能低5%，但参数(mtry)更简单的模型，结果显示，mtry=1的模型符合这个标准。
+
+```{r 测试集性能评估}
+y_pred_ranger <- predict(model_ranger_par_tune, test)
+confusionMatrix(y_pred_ranger, test$r_yn, positive = "yes", mode = "prec_recall")
+```
+
+```{r 随机参数搜索}
+#设定集群
+cl_12 <- makeCluster(12) #默认type为PSOCK，等同于snow库的makePSOCKcluster
+registerDoParallel(cl_12)
+#训练模型
+tic()
+set.seed(100)
+model_ranger_par_tune_ran <- train(
+  r_yn ~ .,
+  data = train,
+  method = "ranger",     #mlbench和ranger库，默认500棵树
+  trControl = cv_ctrl_ran,
+  metric = "ROC",
+  tuneLength = 10         #随机选择10种参数组合
+)
+toc()
+#停止集群
+stopCluster(cl_12)
+#查看结果
+model_ranger_par_tune_ran
+```
+
+```{r}
+y_pred_ranger_2 <- predict(model_ranger_par_tune_ran, test)
+confusionMatrix(y_pred_ranger_2, test$r_yn, positive = "yes", mode = "prec_recall")
+```
+
+```{r Adaptive cv}
+#设定集群
+cl_12 <- makeCluster(12) #默认type为PSOCK，等同于snow库的makePSOCKcluster
+registerDoParallel(cl_12)
+#训练模型
+tic()
+set.seed(100)
+model_ranger_par_tune_ad <- train(
+  r_yn ~ .,
+  data = train,
+  method = "ranger",     #mlbench和ranger库，默认500棵树
+  trControl = cv_ctrl_ad,
+  metric = "ROC",
+  tuneLength = 10,         #随机选择10种参数组合
+  verbose = TRUE
+)
+toc()
+#停止集群
+stopCluster(cl_12)
+#查看结果
+model_ranger_par_tune_ad
+```
+和random search的效果一样。
+
+```{r}
+y_pred_ranger_3 <- predict(model_ranger_par_tune_ad, test)
+confusionMatrix(y_pred_ranger_3, test$r_yn, positive = "yes", mode = "prec_recall")
+```
+
+```{r 递归特征消除预设定}
+#内置的随机森林函数
+fiveStats <- function(...) c(twoClassSummary(...), defaultSummary(...)) #自定义性能指标
+newRF <- rfFuncs
+newRF$summary <- fiveStats #改变性能指标设定
+#控制设定
+rfe_ctrl <- rfeControl(functions = newRF, 
+                       method = "cv", 
+                       index = myfolds, #自动5折，忽略number，如果list为FALSE会报错
+                       rerank = TRUE,
+                       saveDetails = TRUE,
+                       verbose = TRUE)
+```
+
+```{r 递归特征消除}
+#设定集群
+cl_12 <- makeCluster(12) #默认type为PSOCK，等同于snow库的makePSOCKcluster
+registerDoParallel(cl_12)
+#递归运算
+tic()
+set.seed(100)
+rf_rfe_res <- rfe(r_yn ~ .,
+                  data = train,
+                  size = seq(2, ncol(train), by = 2),
+                  metric = "ROC",
+                  rfeControl = rfe_ctrl,
+                  ntree = 100)
+toc()
+#停止集群
+stopCluster(cl_12)
+#查看结果
+rf_rfe_res
+```
+
+```{r 随机参数搜索,自定义重抽样数据}
+#设定集群
+cl_12 <- makeCluster(12) #默认type为PSOCK，等同于snow库的makePSOCKcluster
+registerDoParallel(cl_12)
+#训练模型
+tic()
+set.seed(100)
+model_ranger_par_tune_custom <- train(
+  r_yn ~ .,
+  data = train,
+  method = "ranger",                 #mlbench和ranger库，默认500棵树
+  trControl = cv_ctrl_custom_fold,   #使用自定义的5折数据
+  metric = "ROC",
+  tuneLength = 10                    #随机选择10种参数组合
+)
+toc()
+#停止集群
+stopCluster(cl_12)
+#查看结果
+model_ranger_par_tune_custom
+```
+
+

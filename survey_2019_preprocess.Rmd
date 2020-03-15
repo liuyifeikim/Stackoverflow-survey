@@ -1,0 +1,127 @@
+---
+title: "SURVEY2019"
+output: html_document
+---
+
+0、createFolds
+1、xgboost
+2、logloss
+1、增加变量
+2、降维
+3、RFE
+2、adaptive cv
+3、h2o
+
+```{r 载入相关库}
+library(tidyverse)
+library(tidytext)
+library(tictoc)
+library(pryr)
+library(forcats)
+library(naniar)
+```
+
+
+```{r 读入数据}
+survey_2019 <- read_csv("../../../DATA/developer_survey_2019/survey_results_public.csv", col_names = TRUE)
+head(survey_2019)
+glimpse(survey_2019)
+dim(survey_2019)
+```
+
+```{r 变量探索}
+#各个类别变量的水平数
+survey_2019 %>%
+  mutate_if(is.character, as.factor) %>%
+  summarise_if(is.factor, nlevels) %>%
+  t() %>% 
+  as.data.frame() %>% 
+  rownames_to_column(var = "question") %>% 
+  rename(n = V1) %>% 
+  arrange(-n)
+
+#查看所有列缺失数
+sapply(survey_2019, function(x)sum(is.na(x))) %>% enframe() %>% arrange(-value)
+miss_summary(survey_2019)
+miss_var_summary(survey_2019)
+```
+
+
+```{r 编程语言使用}
+#在使用的语言及明年想学的语言
+survey_2019 %>% 
+  select(Respondent, LanguageWorkedWith, LanguageDesireNextYear) %>% 
+  gather(key = type, value = lang_list, LanguageWorkedWith:LanguageDesireNextYear) %>% 
+  unnest_tokens(input = lang_list, output = lang, token = "regex", pattern = ";") %>% 
+  count(type, lang) %>% 
+  spread(key = type, value = n) %>% 
+  select(lang, LanguageWorkedWith, LanguageDesireNextYear) %>% 
+  filter(!is.na(lang)) %>% 
+  mutate(new_rate = LanguageDesireNextYear / LanguageWorkedWith) %>% 
+  arrange(-new_rate)
+
+#排除明年想学但现在已经在用的语言：新学习指数
+survey_2019 %>% 
+  select(Respondent, LanguageWorkedWith, LanguageDesireNextYear) %>% 
+  gather(key = type, value = lang_list, LanguageWorkedWith:LanguageDesireNextYear) %>% 
+  unnest_tokens(input = lang_list, output = lang, token = "regex", pattern = ";") %>% 
+  arrange(Respondent, desc(type), lang) %>%        #将目前在用的排在前面
+  distinct(Respondent, lang, .keep_all = TRUE) %>% #保留其他没有处理的列
+  count(type, lang) %>% 
+  spread(key = type, value = n) %>% 
+  select(lang, LanguageWorkedWith, LanguageDesireNextYear) %>% 
+  filter(!is.na(lang)) %>% 
+  mutate(new_rate = LanguageDesireNextYear / LanguageWorkedWith) %>% 
+  arrange(-new_rate)
+```
+排除现在在学明年继续学的记录，仅考虑没有用，明年想新学的情况，将两个频数相除，构建每种语言的从零学习指数，指数数值越高说明该语言现在没有用但之后想学的人越多，说明该语言的流行程度正处在上升阶段。
+
+```{r 生成当前在用工具二分变量矩阵和结果变量}
+#备选的自变量
+survey_2019 %>% 
+  select(MainBranch, Hobbyist, OpenSourcer, Employment, Country, Student, EdLevel, OrgSize, DevType,
+         YearsCode, Age1stCode, YearsCodePro, CareerSat, JobSat, MgrIdiot,
+         MgrMoney, MgrWant, LastInt, JobFactors, CompTotal, ConvertedComp, WorkWeekHrs, ImpSyn, DatabaseWorkedWith, 
+         PlatformWorkedWith, DevEnviron, OpSys, BetterLife, Age, Gender, Ethnicity) -> x_list
+x_list
+
+#当前在用工具二分变量矩阵
+survey_2019 %>% 
+  select(Respondent, LanguageWorkedWith) %>% 
+  unnest_tokens(input = LanguageWorkedWith, output = lang, token = "regex", pattern = ";") %>% 
+  count(Respondent, lang) %>% 
+  spread(key = lang, value = n, fill = 0) %>% 
+  select(-c(`<NA>`)) -> x_tbl
+x_tbl
+
+#因变量
+survey_2019 %>%   
+  select(Respondent, LanguageDesireNextYear) %>% 
+  unnest_tokens(input = LanguageDesireNextYear, output = lang, token = "regex", pattern = ";") %>% 
+  filter(lang == "r") %>% 
+  select(Respondent)-> y_tbl  #仅保留ID
+y_tbl
+
+#两者合并
+x_tbl %>% 
+  mutate(r_yn = factor(ifelse(Respondent %in% y_tbl$Respondent, "yes", "no"),levels = c("yes", "no"))) %>% 
+  select(-Respondent) -> model_wide #需要将因变量处理成因子，而且要有字符，如果只是0/1后面用ROC选模型会报错
+model_wide
+
+#因变量分布
+model_wide %>% count(r_yn)
+levels(model_wide$r_yn)
+```
+
+```{r 划分训练和测试集}
+set.seed(100)
+train_id <- createDataPartition(model_wide$r_yn, p = 0.7, list = FALSE)
+train <- model_wide[train_id,]
+test <- model_wide[-train_id,]
+dim(train)
+dim(test)
+table(train$r_yn)
+table(test$r_yn)
+table(train$r_yn) %>% prop.table()
+table(test$r_yn) %>% prop.table()
+```
