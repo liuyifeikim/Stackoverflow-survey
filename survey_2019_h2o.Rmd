@@ -10,12 +10,14 @@ H2O会将读入的数据分布式地储存在计算机中。
 H2O的核心算法由JAVA写成的。
 H2O是一种开源、分布式的机器学习实现框架。有适用于R、PYTHON、SCALA等的API
 所有模型保存在H2O集群的内存中，如果要跑很多模型，需要将内存上限设定得大一些
+H2O所有计算都在内存中进行，节点集群共享内存，对集群的大小没有限制，每一个节点管理一部分行。对数据的处理与R的dataframe和python的pandas一样。
 
 ```{r 初始化h2o集群}
 h2o.init(nthreads = -1, max_mem_size = "16G")  #nthreads 默认为-1
 ```
 
 ```{r 数据转化}
+options("h2o.use.data.table" = TRUE) #数据量比较大时,这样设置会更加快
 train_h2o <- as.h2o(train)
 test_h2o <- as.h2o(test)
 class(train_h2o)
@@ -29,7 +31,7 @@ h2o.describe(train_h2o)
 ```
 
 ```{r 数据划分}
-y_train_h2o <- "r_yn"
+y_train_h2o <- "r_yn"   #因变量需要变为因子，否则会作为数值去做回归模型
 x_train_h2o <- setdiff(names(train_h2o), "r_yn")
 y_train_h2o
 x_train_h2o
@@ -41,19 +43,34 @@ aml <- h2o.automl(x = x_train_h2o,
                   y = y_train_h2o,
                   training_frame = train_h2o,
                   max_models = 10,
-                  seed = 100)
+                  seed = 100, 
+                  verbosity = "info")
 ```
+模型自动训练会在1小时后自动停止，可以通过设置max_runtime_secs控制时间，一般设置一个非常大的时间，控制max_models的数量。模型训练时，会自动调用预设的线程数，即自动并行训练模型。
 
 ```{r 训练结果}
+#训练结果
 aml
-aml@leaderboard #模型效果排列
-aml@leader      #最优模型
+
+#模型效果排列
+aml@leaderboard
+
+#最优模型
+aml@leader     
+aml@leader@model_id
+aml@leader@algorithm
+aml@leader@parameters
 ```
 
 ```{r 结果预测}
-pred_h2o <- h2o.predict(aml, test_h2o)
+pred_h2o <- h2o.predict(aml@leader, test_h2o)
 perf <- h2o.performance(aml@leader, newdata = test_h2o, train = T)
 perf
 h2o.auc(perf) #计算auc
+```
+
+```{r 提取特定模型}
+se <- h2o.getModel(model_id = "StackedEnsemble_BestOfFamily_AutoML_20200319_232358")
+se
 ```
 
